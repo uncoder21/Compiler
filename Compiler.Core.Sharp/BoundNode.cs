@@ -53,12 +53,34 @@ internal partial class BoundVisitor
 
 internal abstract class BoundNode
 {
+    public abstract BoundKind Kind { get; }
+
     public abstract void Accept(BoundVisitor visitor);
+}
+
+internal enum BoundKind : byte
+{
+    None = 0x00,
+    BoundNamespace = 0x01,
+    BoundType = 0x02,
+    BoundField = 0x03,
+    BoundProperty = 0x04,
+    BoundMethod = 0x05,
+    BoundParameter = 0x06,
+    BoundLocal = 0x07,
+    BoundStatement = 0x08,
+    BoundExpression = 0x09,
+    BoundUnaryExpression = 0x0A,
+    BoundBinaryExpression = 0x0B,
+    BoundBlock = 0x0C,
+    BoundAssignmentExpression = 0xD,
 }
 
 [BoundPattern]
 internal class BoundNamespace : BoundNode
 {
+    public override BoundKind Kind => BoundKind.BoundNamespace;
+
     public override void Accept(BoundVisitor visitor)
     {
         visitor.VisitBoundNamespace(this);
@@ -70,28 +92,82 @@ internal class BoundStatement
 
 }
 
-internal class BoundExpression
+internal abstract class BoundExpression : BoundNode
 {
-
+    public abstract TypeKind ResultingType { get; }
 }
+
+internal class BoundConversionExpression
+{
+    public TypeKind TargetType { get; }
+    public BoundExpression Operand { get; }
+}
+
 
 internal class BoundUnaryExpression : BoundExpression
 {
-    
+    public override BoundKind Kind => BoundKind.BoundUnaryExpression;
+
+    public UnaryOperatorKind OperatorKind { get; }
+    public BoundExpression Operand { get; }
+
+    public override TypeKind ResultingType { get; }
+
+
 }
 
 internal enum UnaryOperatorKind : byte
 {
-    Identity = 0x00,
+    Identity,
 
-    LogicalNegation = 0x01,
-    BitwiseNegation = 0x11,
+    LogicalNegation,
+    BitwiseNegation,
 
-    PreIncrement = 0x02,
-    PreDecrement = 0x03,
+    PreIncrement,
+    PreDecrement,
 
-    PostIncrement = 0x12,
-    PostDecrement = 0x13,
+    PostIncrement,
+    PostDecrement,
+
+    Conversion,
+}
+
+internal static class UnaryOperatorKindExtensions
+{
+    public static bool IsIncrement(this UnaryOperatorKind kind)
+    {
+        return kind switch
+        {
+            UnaryOperatorKind.PreIncrement => true,
+            UnaryOperatorKind.PostIncrement => true,
+            _ => false,
+        };
+    }
+    public static bool IsDecrement(this UnaryOperatorKind kind)
+    {
+        return kind switch
+        {
+            UnaryOperatorKind.PreDecrement => true,
+            UnaryOperatorKind.PostDecrement => true,
+            _ => false,
+        };
+    }
+    public static bool IsLogical(this UnaryOperatorKind kind)
+    {
+        return kind switch
+        {
+            UnaryOperatorKind.LogicalNegation => true,
+            _ => false,
+        };
+    }
+    public static bool IsBitwise(this UnaryOperatorKind kind)
+    {
+        return kind switch
+        {
+            UnaryOperatorKind.BitwiseNegation => true,
+            _ => false,
+        };
+    }
 }
 
 internal class BoundBinaryExpression : BoundExpression
@@ -103,31 +179,26 @@ internal class BoundBinaryExpression : BoundExpression
     public TypeKind ResultingType { get; }
 }
 
-internal enum BinaryOperatorKind : byte
+internal enum BinaryOperatorKind
 {
-    Addition,
-    Subtraction,
-    Multiplication,
-    Division,
-    Remainder,
+    None = 0,
 
-    BitwiseAnd = 0x08,
-    BitwiseOr,
-    BitwiseXor,
+    Addition,  // +
+    Subtraction,  // -
+    Multiplication, // *
+    Division,  // /
+    Modulus,  // %
 
-    LogicalAnd = 0x10,
-    LogicalOr,
+    LogicalAnd,  // &&
+    LogicalOr,  // ||
 
-    Equality,
-    Inequality,
+    BitwiseAnd,  // &
+    BitwiseOr,  // |
 
-    LessThan = 0x20,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
+    ShiftLeft,  // <<
+    ShiftRight, // >>
 
-    LeftShift = 0x40,
-    RightShift,
+    Comparison,  // <, >, ==, !=, <=, >=
 }
 
 internal static class BinaryOperatorKindExtensions
@@ -187,43 +258,78 @@ internal static class BinaryOperatorKindExtensions
     }
 }
 
+internal class BoundAssignmentExpression : BoundExpression
+{
+    public override BoundKind Kind => BoundKind.BoundAssignmentExpression;
+
+    public BoundExpression Target { get; }
+    public BoundExpression Value { get; }
+
+    public override TypeKind ResultingType => Target.ResultingType;
+}
+
+internal abstract class BoundVariable : BoundNode
+{
+    public abstract TypeKind Type { get; }
+}
+
+internal class BoundParameter : BoundVariable
+{
+    public override BoundKind Kind => BoundKind.BoundParameter;
+    public override TypeKind Type { get; }
+    public bool IsRef { get; }
+    public bool IsOut { get; }
+    public bool IsIn { get; }
+}
+
 [Flags]
 internal enum TypeKind : ushort
 {
-    None = 0x00,
+    None = 0,
 
-    Int8 = 0x01,
-    Int16 = 0x02,
-    Int32 = 0x04,
-    Int64 = 0x08,
+    Bool,
 
-    UInt8 = 0x11,
-    UInt16 = 0x12,
-    UInt32 = 0x14,
-    UInt64 = 0x18,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
 
-    Float32 = 0x21,
-    Float64 = 0x22,
+    UInt64,
+    UInt32,
+    UInt8,
+    UInt16,
+
+    Float32,
+    Float64,
+
+    Array,
+    Reference,
+    Object,
+    String,
 
     Char = UInt16,
-
-    Boolean = UInt32,
-
-    String = 0x40,
-
-    Object = 0x80,
-
-    Reference = 0x100,
-
-    Pointer = 0x200,
-
-    Array = 0x400,
-
-    Function = 0x800,
 }
 
 internal static class TypeKindExtensions
 {
+
+    public static bool IsBooleanType(this TypeKind type)
+    {
+        return type == TypeKind.Bool;
+    }
+
+    public static bool IsSignedType(this TypeKind type)
+    {
+        return type switch
+        {
+            TypeKind.Int8 => true,
+            TypeKind.Int16 => true,
+            TypeKind.Int32 => true,
+            TypeKind.Int64 => true,
+            _ => false,
+        };
+    }
+
     public static bool IsUnsignedType(this TypeKind type)
     {
         return type switch
@@ -234,6 +340,360 @@ internal static class TypeKindExtensions
             TypeKind.UInt64 => true,
             _ => false,
         };
+    }
+
+    public static bool IsFloatingPointType(this TypeKind type)
+    {
+        return type switch
+        {
+            TypeKind.Float32 => true,
+            TypeKind.Float64 => true,
+            _ => false,
+        };
+    }
+
+    public static bool IsIntegralType(this TypeKind type)
+    {
+        return IsSignedType(type) || IsUnsignedType(type);
+    }
+
+    public static bool IsPointerType(this TypeKind type)
+    {
+        return type switch
+        {
+            TypeKind.Reference => true,
+            TypeKind.Object => true,
+            TypeKind.String => true,
+            _ => false,
+        };
+    }
+
+    public static bool IsNumericType(this TypeKind type)
+    {
+        return IsIntegralType(type) || IsFloatingPointType(type);
+    }
+
+    public static uint GetSize(this TypeKind type)
+    {
+        return type switch
+        {
+            TypeKind.Bool => 1,
+
+            TypeKind.Int8 => 1,
+            TypeKind.Int16 => 2,
+            TypeKind.Int32 => 4,
+            TypeKind.Int64 => 8,
+
+            TypeKind.UInt8 => 1,
+            TypeKind.UInt16 => 2,
+            TypeKind.UInt32 => 4,
+            TypeKind.UInt64 => 8,
+
+            TypeKind.Float32 => 4,
+            TypeKind.Float64 => 8,
+
+            TypeKind.Array => 4,
+            TypeKind.Reference => 4,
+            TypeKind.Object => 4,
+            TypeKind.String => 4,
+            _ => 0,
+        };
+    }
+
+    public static uint EncodeOperationKey(BinaryOperatorKind operatorKind, TypeKind left, TypeKind right)
+    {
+        return ((uint)operatorKind << 26) | ((uint)left << 13) | (uint)right;
+    }
+
+    public static uint EncodeOperationKey(UnaryOperatorKind operatorKind, TypeKind operand)
+    {
+        return ((uint)operatorKind << 26) | ((uint)operand << 13);
+    }
+
+    public static TypeKind GetResultingType(BinaryOperatorKind operatorKind, TypeKind left, TypeKind right)
+    {
+        // floating point | integral -> floating point
+        // integral | floating point -> floating point
+        // signed | unsigned -> explicit conversion needed
+        // unsigned | signed -> explicit conversion needed
+        // signed | signed -> signed
+        // unsigned | unsigned -> unsigned
+        // same type -> same type
+        // pointer | integral -> pointer
+        // integral | pointer -> pointer
+
+        if (IsIntegralType(left) && IsFloatingPointType(right))
+        {
+            return right;
+        }
+
+        if (IsFloatingPointType(left) && IsIntegralType(right))
+        {
+            return left;
+        }
+        
+        if (IsSignedType(left) && IsSignedType(right))
+        {
+            return left > right ? left : right;
+        }
+
+        if (IsUnsignedType(left) && IsUnsignedType(right))
+        {
+            return left > right ? left : right;
+        }
+
+        if (left == right)
+        {
+            return left;
+        }
+
+        if (IsPointerType(left) && IsIntegralType(right))
+        {
+            return left;
+        }
+
+        if (IsIntegralType(left) && IsPointerType(right))
+        {
+            return right;
+        }
+
+        return left;
+    }
+
+    public static bool NeedsImplicitlyConversion(TypeKind from, TypeKind to)
+    {
+        if (from == to) return true;
+
+        return (from, to) switch
+        {
+            // Integer widening conversions
+            (TypeKind.Int8, TypeKind.Int16) => true,
+            (TypeKind.Int8, TypeKind.Int32) => true,
+            (TypeKind.Int8, TypeKind.Int64) => true,
+
+            (TypeKind.Int16, TypeKind.Int32) => true,
+            (TypeKind.Int16, TypeKind.Int64) => true,
+
+            (TypeKind.Int32, TypeKind.Int64) => true,
+
+            (TypeKind.UInt8, TypeKind.UInt16) => true,
+            (TypeKind.UInt8, TypeKind.UInt32) => true,
+            (TypeKind.UInt8, TypeKind.UInt64) => true,
+
+            (TypeKind.UInt16, TypeKind.UInt32) => true,
+            (TypeKind.UInt16, TypeKind.UInt64) => true,
+
+            (TypeKind.UInt32, TypeKind.UInt64) => true,
+
+            // Float widening conversions
+            (TypeKind.Int32, TypeKind.Float32) => true,
+            (TypeKind.Int32, TypeKind.Float64) => true,
+
+            (TypeKind.Int64, TypeKind.Float64) => true,
+
+            (TypeKind.UInt32, TypeKind.Float32) => true,
+            (TypeKind.UInt32, TypeKind.Float64) => true,
+
+            (TypeKind.UInt64, TypeKind.Float64) => true,
+
+            (TypeKind.Float32, TypeKind.Float64) => true,
+
+            // Implicit integer to pointer conversion
+            (TypeKind.Int32, TypeKind.Reference) => true,
+            (TypeKind.UInt32, TypeKind.Reference) => true,
+
+            _ => false
+        };
+    }
+
+    public static ILOpcode GetImplicitConversionOpcode(TypeKind from, TypeKind to)
+    {
+        return (from, to) switch
+        {
+            (TypeKind.Int8, TypeKind.Int16) => ILOpcode.Conv_I2,
+            (TypeKind.Int8, TypeKind.Int32) => ILOpcode.Conv_I4,
+            (TypeKind.Int8, TypeKind.Int64) => ILOpcode.Conv_I8,
+
+            (TypeKind.Int16, TypeKind.Int32) => ILOpcode.Conv_I4,
+            (TypeKind.Int16, TypeKind.Int64) => ILOpcode.Conv_I8,
+
+            (TypeKind.Int32, TypeKind.Int64) => ILOpcode.Conv_I8,
+
+            (TypeKind.UInt8, TypeKind.UInt16) => ILOpcode.Conv_U2,
+            (TypeKind.UInt8, TypeKind.UInt32) => ILOpcode.Conv_U4,
+            (TypeKind.UInt8, TypeKind.UInt64) => ILOpcode.Conv_U8,
+
+            (TypeKind.UInt16, TypeKind.UInt32) => ILOpcode.Conv_U4,
+            (TypeKind.UInt16, TypeKind.UInt64) => ILOpcode.Conv_U8,
+
+            (TypeKind.UInt32, TypeKind.UInt64) => ILOpcode.Conv_U8,
+
+            (TypeKind.Int32, TypeKind.Float32) => ILOpcode.Conv_R4,
+            (TypeKind.Int32, TypeKind.Float64) => ILOpcode.Conv_R8,
+
+            (TypeKind.Int64, TypeKind.Float64) => ILOpcode.Conv_R8,
+
+            (TypeKind.UInt32, TypeKind.Float32) => ILOpcode.Conv_R4,
+            (TypeKind.UInt32, TypeKind.Float64) => ILOpcode.Conv_R8,
+
+            (TypeKind.UInt64, TypeKind.Float64) => ILOpcode.Conv_R8,
+
+            (TypeKind.Float32, TypeKind.Float64) => ILOpcode.Conv_R8,
+
+            // Integer to pointer conversion
+            (TypeKind.Int32, TypeKind.Reference) => ILOpcode.Conv_U,
+            (TypeKind.UInt32, TypeKind.Reference) => ILOpcode.Conv_U,
+
+            _ => throw new InvalidOperationException($"No implicit conversion opcode found for {from} to {to}")
+        };
+    }
+
+    public static bool TryGetConversionOpcode(TypeKind from, TypeKind to, out ILOpcode? opcode)
+    {
+        // type    -> stack representation
+        //
+        // int8    -> int32
+        // int16   -> int32
+        // int32   -> int32
+        // int64   -> int64
+        //
+        // uint8   -> int32
+        // uint16  -> int32
+        // uint32  -> int32
+        // uint64  -> int64
+        //
+        // float32 -> float32
+        // float64 -> float64
+        //
+        // conversions are needed for:
+        //
+        // int8    -> float32
+        // int8    -> float64
+        // int16   -> float32
+        // int16   -> float64
+        // int32   -> float32
+        // int32   -> float64
+        // int64   -> float32
+        // int64   -> float64
+        //
+        // uint8   -> float32
+        // uint8   -> float64
+        // uint16  -> float32
+        // uint16  -> float64
+        // uint32  -> float32
+        // uint32  -> float64
+        // uint64  -> float32
+        // uint64  -> float64
+        //
+        // also needs conversions for types that are smaller on size
+        //
+        // int16   -> int8
+        // int32   -> int8
+        // int32   -> int16
+        // int64   -> int8
+        // int64   -> int16
+        // int64   -> int32
+        //
+        // uint16  -> uint8
+        // uint32  -> uint8
+        // uint32  -> uint16
+        // uint64  -> uint8
+        // uint64  -> uint16
+        // uint64  -> uint32
+        //
+        // float32 -> int8
+        // float32 -> int16
+        // float32 -> int32
+        // float32 -> int64
+        // float32 -> uint8
+        // float32 -> uint16
+        // float32 -> uint32
+        // float32 -> uint64
+        //
+        // float64 -> int8
+        // float64 -> int16
+        // float64 -> int32
+        // float64 -> int64
+        // float64 -> uint8
+        // float64 -> uint16
+        // float64 -> uint32
+        // float64 -> uint64
+        //
+        // float64 -> float32
+        //
+        // also signed to unsigned and unsigned to signed
+        //
+        // int8    -> uint8
+        // int8    -> uint16
+        // int8    -> uint32
+        // int8    -> uint64
+        // int16   -> uint8
+        // int16   -> uint16
+        // int16   -> uint32
+        // int16   -> uint64
+        // int32   -> uint8
+        // int32   -> uint16
+        // int32   -> uint32
+        // int32   -> uint64
+        // int64   -> uint8
+        // int64   -> uint16
+        // int64   -> uint32
+        // int64   -> uint64
+        //
+        // uint8   -> int8
+        // uint8   -> int16
+        // uint8   -> int32
+        // uint8   -> int64
+        // uint16  -> int8
+        // uint16  -> int16
+        // uint16  -> int32
+        // uint16  -> int64
+        // uint32  -> int8
+        // uint32  -> int16
+        // uint32  -> int32
+        // uint32  -> int64
+        // uint64  -> int8
+        // uint64  -> int16
+        // uint64  -> int32
+        // uint64  -> int64
+        //
+        // in x86_64, native int is 32 bits
+        // so we don't need to convert int32 to nint
+        // or uint32 to nuint
+        //
+        // int64   -> nint
+        // uint64  -> nuint
+        //
+        // nint    -> int64
+        // nuint   -> uint64
+        //
+        // also, we need to convert pointers to integers
+        // int x86_64, pointers are 64 bits
+        // so we don't need to convert uint64 to pointer
+        //
+        // int32   -> pointer
+        // uint32  -> pointer
+        //
+        // pointer -> int32
+        // pointer -> uint32
+        //
+
+        switch (from, to)
+        {
+            case (TypeKind.Int8, TypeKind.Int16):
+                opcode = ILOpcode.Conv_I2;
+                return true;
+            case (TypeKind.Int8, TypeKind.Int32):
+                opcode = ILOpcode.Conv_I4;
+                return true;
+            case (TypeKind.Int8, TypeKind.Int64):
+                opcode = ILOpcode.Conv_I8;
+                return true;
+
+            default:
+                opcode = null;
+                return false;
+        }
     }
 }
 
@@ -580,6 +1040,20 @@ internal class ILGenerator
         }
     }
 
+    private void EmitAssignmentExpression(BoundAssignmentExpression expression)
+    {
+        EmitExpression(expression.Value);
+
+        var resultType = expression.Value.ResultingType;
+    }
+
+    private void EmitConversionExpression(BoundConversionExpression expression)
+    {
+        EmitExpression(expression.Operand);
+
+
+    }
+
     private void EmitBranch(ILOpcode opcode, object label, ILOpcode revOpcode = ILOpcode.Nop)
     {
 
@@ -603,6 +1077,19 @@ internal class ILGenerator
     {
         throw new NotImplementedException();
     }
+}
+
+internal class BasicBlock
+{
+    public bool IsChecked { get; }
+    public bool IsUnchecked { get; }
+    public bool IsUnsafe { get; }
+
+    public bool IsReachable { get; }
+
+    public ILOpcode? BranchOpcode { get; }
+
+    public BasicBlock? NextBlock { get; }
 }
 
 internal class ILInstruction
